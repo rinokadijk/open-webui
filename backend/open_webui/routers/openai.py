@@ -44,7 +44,6 @@ from open_webui.utils.misc import (
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.access_control import has_access
 
-
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["OPENAI"])
 
@@ -788,6 +787,10 @@ async def generate_chat_completion(
     if "max_tokens" in payload and "max_completion_tokens" in payload:
         del payload["max_tokens"]
 
+    expect_streaming_response = True
+    if "stream" in payload:
+        expect_streaming_response = payload["stream"]
+
     # Convert the modified body back to JSON
     if "logit_bias" in payload:
         payload["logit_bias"] = json.loads(
@@ -847,12 +850,14 @@ async def generate_chat_completion(
         )
 
         # Check if response is SSE
-        if "text/event-stream" in r.headers.get("Content-Type", ""):
+        if expect_streaming_response or "text/event-stream" in r.headers.get("Content-Type", ""):
+            response_headers = dict(r.headers)
+            response_headers["Content-Type"] = "text/event-stream"
             streaming = True
             return StreamingResponse(
                 r.content,
                 status_code=r.status,
-                headers=dict(r.headers),
+                headers=response_headers,
                 background=BackgroundTask(
                     cleanup_response, response=r, session=session
                 ),
